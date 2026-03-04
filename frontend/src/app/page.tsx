@@ -18,6 +18,14 @@ type AnalyzeResponse = {
   score: number;
 };
 
+type AnalyzeErrorResponse = {
+  error?: string;
+};
+
+function isAnalyzeResponse(payload: AnalyzeResponse | AnalyzeErrorResponse): payload is AnalyzeResponse {
+  return "summary" in payload && "vulnerabilities" in payload && "score" in payload;
+}
+
 const LANGS = [
   { value: "javascript", label: "JavaScript" },
   { value: "typescript", label: "TypeScript" },
@@ -46,28 +54,34 @@ export default function Home() {
 
     setLoading(true);
     try {
-      // TODO (Día 4): conectar con backend real
-      // const res = await fetch("/api/analyze", { ... })
+      const res = await fetch("/api/analyze", {
+        method: "POST",
+        headers: {
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          language,
+          code,
+        }),
+      });
 
-      // MOCK provisional para UI
-      const mock: AnalyzeResponse = {
-        summary: "1 posible vulnerabilidad detectada.",
-        vulnerabilities: [
-          {
-            type: "SQL Injection",
-            severity: "HIGH",
-            line: 12,
-            description: "Entrada de usuario potencialmente concatenada en una consulta.",
-            recommendation: "Usa queries parametrizadas y valida entradas.",
-          },
-        ],
-        score: 65,
-      };
+      const payload: AnalyzeResponse | AnalyzeErrorResponse = await res.json();
 
-      await new Promise((r) => setTimeout(r, 500)); // simula latencia
-      setResult(mock);
+      if (!res.ok) {
+        const errorMessage =
+          "error" in payload ? (payload.error ?? "No se pudo analizar el código. Intenta de nuevo.") : "No se pudo analizar el código. Intenta de nuevo.";
+        setError(errorMessage);
+        return;
+      }
+
+      if (!isAnalyzeResponse(payload)) {
+        setError("La respuesta del servicio no tiene el formato esperado.");
+        return;
+      }
+
+      setResult(payload);
     } catch {
-      setError("No se pudo analizar el código. Intenta de nuevo.");
+      setError("No se pudo conectar con el servicio de análisis.");
     } finally {
       setLoading(false);
     }
@@ -141,9 +155,9 @@ export default function Home() {
               <p className="mt-2 text-sm text-zinc-200">{result.summary}</p>
 
               <div className="mt-4 space-y-3">
-                {result.vulnerabilities.map((v, idx) => (
+                {result.vulnerabilities.map((v) => (
                   <div
-                    key={idx}
+                    key={`${v.type}-${v.line}-${v.severity}`}
                     className="rounded-lg border border-zinc-800 bg-zinc-950/60 p-3"
                   >
                     <div className="flex flex-col gap-1 sm:flex-row sm:items-center sm:justify-between">
